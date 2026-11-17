@@ -129,6 +129,9 @@ const hourQuantiles = (neighbours: Array<{ p1: number; r: Map<number, number> }>
   return LEVELS.map((p) => quantile(vals, p));
 };
 
+/** The house baseline's z-scores, used only when no comparable passes the filters. */
+const BASE_Z = [-1.645, -0.674, 0, 0.674, 1.645];
+
 mkdirSync(OUTPUT_DIR, { recursive: true });
 // Every case file, in name order, so two runs write the same bytes.
 const inputs = readdirSync(INPUT_DIR).filter((f) => f.endsWith('.in')).sort();
@@ -151,7 +154,12 @@ for (const file of inputs) {
   const neighbours = curves.slice(0, K_NEIGHBOURS);
 
   const hours = c.forecast.map(({ hour }) => {
-    const qs = neighbours.length > 0 ? hourQuantiles(neighbours, hour) : [1, 1, 1, 1, 1];
+    // No usable comparables: fall back to the house baseline's shape
+    // (q = p1 * exp(z * 0.15 * sqrt(h - 1))) rather than a flat line, so a
+    // thin final case still gets a shaped forecast instead of a constant.
+    const qs = neighbours.length > 0
+      ? hourQuantiles(neighbours, hour)
+      : BASE_Z.map((z) => Math.exp(z * 0.15 * Math.sqrt(hour - 1)));
     // Quantiles are non-decreasing by construction; clamp and keep them so.
     const q = qs.map((v) => clampQ(p1 * v));
     for (let j = 1; j < q.length; j++) if (q[j] < q[j - 1]) q[j] = q[j - 1];
